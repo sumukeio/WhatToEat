@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>今天吃什么 | Meal Decider</title>
+    <style>
+        :root {
+            --bg-color: #F5F5F7;
+            --card-bg: #FFFFFF;
+            --primary: #007AFF;
+            --text-main: #1D1D1F;
+            --text-sub: #86868B;
+            --border: #E5E5EA;
+            --shadow: 0 4px 20px rgba(0,0,0,0.05);
+            --danger: #FF3B30;
+            --success: #34C759;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body.modal-open { overflow: hidden; }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            padding-bottom: 40px;
+            z-index: 1;
+        }
+
+        header { text-align: center; margin-bottom: 20px; }
+        h1 { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+        p.subtitle { color: var(--text-sub); font-size: 14px; margin-top: 5px; }
+
+        /* 转盘 */
+        .wheel-container {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            margin: 0 auto 30px;
+            background: var(--card-bg);
+            border-radius: 50%;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            transition: transform 4s cubic-bezier(0.1, 0, 0.1, 1);
+        }
+
+        .pointer {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 25px solid var(--primary);
+            z-index: 10;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        .spin-btn {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            background: var(--card-bg);
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        .spin-btn:active { transform: scale(0.95); background: #f0f0f0; }
+
+        #result {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            min-height: 27px;
+            color: var(--primary);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* 卡片 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 表单 */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; font-weight: 500; }
+        
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 16px;
+            background: #F9F9F9;
+            transition: border-color 0.2s;
+            -webkit-appearance: none;
+        }
+        input:focus { outline: none; border-color: var(--primary); background: #FFF; }
+
+        .platform-selector { display: flex; background: #F0F0F5; padding: 4px; border-radius: 10px; }
+        .platform-option { flex: 1; text-align: center; padding: 8px 0; font-size: 13px; color: var(--text-sub); border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .platform-option.active { background: #FFF; color: #000; box-shadow: 0 2px 6px rgba(0,0,0,0.1); font-weight: 600; }
+
+        /* 按钮 */
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: transparent; color: var(--text-sub); border: 1px solid var(--border); font-size: 14px; padding: 10px; flex: 1; }
+        .btn:active { opacity: 0.7; }
+
+        /* 列表 */
+        .item-list { list-style: none; padding: 0; margin: 0; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #F0F0F5; }
+        .item-row:last-child { border-bottom: none; }
+        .item-info { flex: 1; }
+        .item-name { font-weight: 500; font-size: 15px; }
+        .item-meta { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+        .item-price { font-weight: 600; color: var(--text-main); margin-right: 15px; }
+        .delete-btn { color: var(--border); font-size: 18px; padding: 5px; cursor: pointer; }
+        .delete-btn:hover { color: var(--danger); }
+
+        /* 工具栏 (按钮并排) */
+        .toolbar { display: flex; gap: 10px; margin-top: 10px; }
+
+        /* 弹窗 Toast */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 400px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 25px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { background: rgba(255, 59, 48, 0.95); }
+        .toast.success { background: rgba(52, 199, 89, 0.95); }
+
+        /* 弹窗 Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            z-index: 3000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease-in-out;
+            backdrop-filter: blur(0px);
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; backdrop-filter: blur(5px); }
+
+        .modal-dialog {
+            background: rgba(255, 255, 255, 0.95);
+            width: 80%;
+            max-width: 300px;
+            border-radius: 14px;
+            overflow: hidden;
+            text-align: center;
+            transform: scale(1.1);
+            transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal-overlay.show .modal-dialog { transform: scale(1); }
+
+        .modal-content { padding: 20px; }
+        .modal-title { font-weight: 700; font-size: 17px; margin-bottom: 8px; color: #000; }
+        .modal-text { font-size: 13px; color: #000; line-height: 1.4; }
+
+        .modal-actions { display: flex; border-top: 0.5px solid rgba(60, 60, 67, 0.29); }
+        .modal-btn {
+            flex: 1; padding: 12px; border: none; background: transparent; font-size: 17px; cursor: pointer; color: var(--primary); font-weight: 400; margin: 0; border-radius: 0;
+        }
+        .modal-btn:active { background: rgba(0,0,0,0.05); }
+        .modal-btn.cancel { font-weight: 600; border-right: 0.5px solid rgba(60, 60, 67, 0.29); }
+        .modal-btn.destructive { color: var(--danger); }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>今天吃什么？</h1>
+        <p class="subtitle">Decision Fatigue Saver</p>
+    </header>
+
+    <div id="result">⬇️ 点击中间开始旋转</div>
+    <div class="wheel-container">
+        <div class="pointer"></div>
+        <canvas id="wheel" width="640" height="640"></canvas>
+        <button class="spin-btn" id="spinBtn">GO</button>
+    </div>
+
+    <div class="card">
+        <div class="card-title">录入新选项</div>
+        
+        <div class="form-group">
+            <label>平台</label>
+            <div class="platform-selector" id="platformSelect">
+                <div class="platform-option active" data-value="淘宝">淘宝闪购</div>
+                <div class="platform-option" data-value="美团">美团</div>
+                <div class="platform-option" data-value="拼好饭">拼好饭</div>
+            </div>
+        </div>
+
+        <div class="form-group" style="display: flex; gap: 10px;">
+            <div style="flex: 2;">
+                <label>店家名称</label>
+                <input type="text" id="shopName" placeholder="例如：沙县小吃">
+            </div>
+            <div style="flex: 1;">
+                <label>价格 (¥)</label>
+                <input type="number" id="price" placeholder="15.5" step="0.5" min="0.1">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>产品名称</label>
+            <input type="text" id="productName" placeholder="例如：鸭腿饭 + 卤蛋">
+        </div>
+
+        <button class="btn btn-primary" id="addBtn">添加选项</button>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            候选清单 (<span id="count">0</span>)
+        </div>
+        <ul class="item-list" id="itemList">
+            </ul>
+        <div class="toolbar">
+            <button class="btn btn-secondary" id="exportBtn">导出</button>
+            <button class="btn btn-secondary" id="importBtn">导入</button>
+            <input type="file" id="importInput" accept=".json" style="display: none;">
+            
+            <button class="btn btn-secondary" style="color: var(--danger); border-color: rgba(255, 59, 48, 0.3);" id="clearBtn">清空</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">标题</div>
+            <div class="modal-text" id="modalText">内容文本</div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" id="modalCancelBtn">取消</button>
+            <button class="modal-btn" id="modalConfirmBtn">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 核心数据逻辑 ---
+    const STORAGE_KEY = 'food_decision_data_v1';
+    let foodItems = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    
+    // 初始数据
+    if (foodItems.length === 0) {
+        foodItems = [
+            { id: 1, platform: '美团', shop: '示例店家', product: '隆江猪脚饭', price: 18.0 },
+            { id: 2, platform: '淘宝', shop: '示例店家', product: '黄焖鸡米饭', price: 16.5 },
+            { id: 3, platform: '拼好饭', shop: '示例店家', product: '麻辣烫', price: 12.9 }
+        ];
+        saveData();
+    }
+
+    // --- DOM 元素 ---
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const spinBtn = document.getElementById('spinBtn');
+    const resultDiv = document.getElementById('result');
+    const platformOptions = document.querySelectorAll('.platform-option');
+    let currentPlatform = '淘宝';
+
+    // --- Toast & Modal 逻辑 (保持不变) ---
+    function showToast(msg, type = 'normal') {
+        const toastContainer = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        let className = 'toast';
+        if (type === 'error') className += ' error';
+        if (type === 'success') className += ' success';
+        
+        toast.className = className;
+        toast.innerText = msg;
+        toastContainer.appendChild(toast);
+
+        toast.offsetHeight; 
+        toast.classList.add('show');
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 2500);
+    }
+
+    let confirmCallback = null;
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalText = document.getElementById('modalText');
+    const confirmBtn = document.getElementById('modalConfirmBtn');
+    const cancelBtn = document.getElementById('modalCancelBtn');
+
+    function showConfirm(title, text, isDestructive, callback) {
+        modalTitle.innerText = title;
+        modalText.innerText = text;
+        confirmCallback = callback;
+        if (isDestructive) confirmBtn.classList.add('destructive');
+        else confirmBtn.classList.remove('destructive');
+        document.body.classList.add('modal-open');
+        modalOverlay.classList.add('show');
+    }
+
+    function closeModal() {
+        modalOverlay.classList.remove('show');
+        document.body.classList.remove('modal-open');
+        confirmCallback = null;
+    }
+
+    cancelBtn.addEventListener('click', closeModal);
+    confirmBtn.addEventListener('click', () => {
+        if (confirmCallback) confirmCallback();
+        closeModal();
+    });
+
+
+    // --- 转盘逻辑 ---
+    const colors = ['#FF9F0A', '#30D158', '#007AFF', '#BF5AF2', '#FF375F', '#64D2FF', '#FFD60A', '#5E5CE6'];
+
+    function drawWheel() {
+        if (foodItems.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            return;
+        }
+        const arc = 2 * Math.PI / foodItems.length;
+        const radius = canvas.width / 2;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        foodItems.forEach((item, index) => {
+            const angle = index * arc;
+            ctx.beginPath();
+            ctx.fillStyle = colors[index % colors.length];
+            ctx.moveTo(radius, radius);
+            ctx.arc(radius, radius, radius, angle, angle + arc);
+            ctx.lineTo(radius, radius);
+            ctx.fill();
+            ctx.save();
+            ctx.translate(radius, radius);
+            ctx.rotate(angle + arc / 2);
+            ctx.textAlign = "right";
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 24px -apple-system";
+            let text = item.product;
+            if(text.length > 8) text = text.substring(0, 8) + '..';
+            ctx.fillText(text, radius - 40, 10);
+            ctx.restore();
+        });
+    }
+
+    let currentRotation = 0;
+    let isSpinning = false;
+    
+    spinBtn.addEventListener('click', () => {
+        if (isSpinning) return;
+        if (foodItems.length < 2) {
+            showToast("至少需要两个选项才能开始！", 'error');
+            return;
+        }
+        isSpinning = true;
+        resultDiv.style.opacity = '0';
+        
+        // 随机旋转圈数 (5-10圈) + 随机角度
+        // 关键点：这里不需要去凑整，完全随机即可
+        const randomDegree = Math.floor(1800 + Math.random() * 1800); 
+        currentRotation += randomDegree;
+
+        // CSS 旋转 (逆时针旋转 canvas)
+        canvas.style.transform = `rotate(-${currentRotation}deg)`;
+
+        setTimeout(() => {
+            isSpinning = false;
+            // --- 核心修复算法 ---
+            
+            // 1. 获取转盘相对于原始位置转过的有效角度 (0-360)
+            const actualRotation = currentRotation % 360;
+            
+            // 2. 计算指针指向的角度
+            // 指针物理位置在 12 点钟，即 Canvas 坐标系的 270 度。
+            // 因为转盘是逆时针转 (rotate(-deg))，相当于指针顺时针跑了 actualRotation 度。
+            // 所以：最终指针落在转盘上的角度 = (初始270度 + 转过的角度) % 360
+            const pointerAngle = (270 + actualRotation) % 360;
+            
+            // 3. 计算落在哪个扇区
+            const sliceAngle = 360 / foodItems.length;
+            const winningIndex = Math.floor(pointerAngle / sliceAngle);
+            
+            // 4. 获取结果
+            const winner = foodItems[winningIndex];
+            
+            showResult(winner);
+        }, 4000);// 必须匹配 CSS transition 时间
+    });
+
+    function showResult(item) {
+        resultDiv.innerText = `✨ 决定了！吃 ${item.platform} 的 ${item.shop} 的 ${item.product} (¥${item.price})`;
+        resultDiv.style.opacity = '1';
+        if(navigator.vibrate) navigator.vibrate(200);
+    }
+
+    // --- 数据操作逻辑 ---
+
+    platformSelect.addEventListener('click', (e) => {
+        if(e.target.classList.contains('platform-option')) {
+            document.querySelectorAll('.platform-option').forEach(el => el.classList.remove('active'));
+            e.target.classList.add('active');
+            currentPlatform = e.target.dataset.value;
+        }
+    });
+
+    document.getElementById('addBtn').addEventListener('click', () => {
+        const shop = document.getElementById('shopName').value.trim();
+        const product = document.getElementById('productName').value.trim();
+        let priceVal = document.getElementById('price').value;
+
+        if (!shop || !product || !priceVal) {
+            showToast('请填写完整信息', 'error');
+            return;
+        }
+
+        const price = parseFloat(priceVal);
+
+        // --- 功能点 1：价格必须大于 0 校验 ---
+        if (isNaN(price) || price <= 0) {
+            showToast('价格必须大于 0 元', 'error');
+            return;
+        }
+
+        const newItem = {
+            id: Date.now(),
+            platform: currentPlatform,
+            shop,
+            product,
+            price: price.toFixed(1)
+        };
+
+        foodItems.push(newItem);
+        saveData();
+        clearForm();
+        renderList();
+        drawWheel();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast('添加成功', 'success');
+    });
+
+    function saveData() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(foodItems));
+    }
+
+    function clearForm() {
+        document.getElementById('shopName').value = '';
+        document.getElementById('productName').value = '';
+        document.getElementById('price').value = '';
+    }
+
+    function renderList() {
+        const listEl = document.getElementById('itemList');
+        document.getElementById('count').innerText = foodItems.length;
+        listEl.innerHTML = '';
+
+        foodItems.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'item-row';
+            li.innerHTML = `
+                <div class="item-info">
+                    <div class="item-name">${item.product}</div>
+                    <div class="item-meta">
+                        <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:10px; margin-right:5px;">${item.platform}</span>
+                        ${item.shop}
+                    </div>
+                </div>
+                <div class="item-price">¥${item.price}</div>
+                <div class="delete-btn" onclick="deleteItem(${index})">×</div>
+            `;
+            listEl.appendChild(li);
+        });
+    }
+
+    window.deleteItem = function(index) {
+        showConfirm(
+            '确认删除？',
+            '删除后将无法恢复该选项。',
+            true, 
+            () => {
+                foodItems.splice(index, 1);
+                saveData();
+                renderList();
+                drawWheel();
+                showToast('已删除');
+            }
+        );
+    };
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+        showConfirm(
+            '清空所有数据？',
+            '这将删除候选清单中的所有选项。',
+            true, 
+            () => {
+                foodItems = [];
+                saveData();
+                renderList();
+                drawWheel();
+                showToast('全部清空完成');
+            }
+        );
+    });
+
+    // 导出功能
+    document.getElementById('exportBtn').addEventListener('click', () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(foodItems));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        // 使用时间戳命名文件，方便版本管理
+        const date = new Date().toISOString().slice(0,10);
+        downloadAnchorNode.setAttribute("download", `food_list_${date}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        showToast('数据已导出', 'success');
+    });
+
+    // --- 功能点 2：导入功能 ---
+    const importBtn = document.getElementById('importBtn');
+    const importInput = document.getElementById('importInput');
+
+    // 点击按钮触发文件选择
+    importBtn.addEventListener('click', () => {
+        importInput.click();
+    });
+
+    // 监听文件变化
+    importInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importedData = JSON.parse(event.target.result);
+                
+                if (!Array.isArray(importedData)) {
+                    showToast('文件格式错误：不是列表数据', 'error');
+                    return;
+                }
+
+                // 简单的校验和数据清洗
+                let validCount = 0;
+                importedData.forEach(item => {
+                    // 确保有关键字段
+                    if (item.platform && item.product && item.price) {
+                        // 重新生成ID以防冲突
+                        item.id = Date.now() + Math.random(); 
+                        foodItems.push(item);
+                        validCount++;
+                    }
+                });
+
+                if (validCount > 0) {
+                    saveData();
+                    renderList();
+                    drawWheel();
+                    showToast(`成功导入 ${validCount} 条数据`, 'success');
+                } else {
+                    showToast('未发现有效数据', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('无法解析文件', 'error');
+            }
+            // 清空 input 允许重复导入同一文件
+            importInput.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // 初始化
+    renderList();
+    setTimeout(drawWheel, 100);
+    window.addEventListener('resize', drawWheel);
+
+</script>
+</body>
+</html>
